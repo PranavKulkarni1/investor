@@ -1,86 +1,55 @@
 import streamlit as st
+import database  # Import database functions
 import pandas as pd
-from database import add_investor, search_investors, get_all_investors
-import sqlite3
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import smtplib
-from email.mime.text import MIMEText
 
-# Initialize FastAPI app (for future API use)
-app = FastAPI()
-
-# Database Setup (SQLite for simplicity)
-conn = sqlite3.connect("investor_db.db", check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS investors (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    company TEXT,
-                    aum TEXT,
-                    sector TEXT
-                )''')
-conn.commit()
-
-# User Authentication (Basic Example)
-users = {"admin": "password123"}  # Replace with a secure authentication method
-
-# Pydantic Model for Email Requests
-class EmailRequest(BaseModel):
-    subject: str
-    body: str
-    recipient: str
-
-@app.post("/send_email")
-def send_email(request: EmailRequest):
-    try:
-        msg = MIMEText(request.body)
-        msg["Subject"] = request.subject
-        msg["From"] = "your-email@example.com"
-        msg["To"] = request.recipient
-
-        with smtplib.SMTP("smtp.example.com", 587) as server:
-            server.starttls()
-            server.login("your-email@example.com", "your-password")
-            server.sendmail("your-email@example.com", request.recipient, msg.as_string())
-        
-        return {"message": "Email sent successfully"}
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Streamlit Frontend
 st.title("Investor Database & Outreach Platform")
 
-# Login Form
+# Login Section
 username = st.text_input("Username")
 password = st.text_input("Password", type="password")
 if st.button("Login"):
-    if users.get(username) == password:
+    if username == "admin" and password == "password123":
         st.session_state["authenticated"] = True
         st.success("Logged in successfully!")
     else:
         st.error("Invalid credentials")
 
-# If authenticated, show investor search & email functionality
+# If authenticated, show investor management functionalities
 if "authenticated" in st.session_state:
+
+    # Search Investors
     st.subheader("Search Investors")
     search_query = st.text_input("Search by Name, Company, or Sector")
     if st.button("Search"):
-        results = search_investors(search_query)
+        results = database.search_investors(search_query)
         if results:
             df = pd.DataFrame(results, columns=["ID", "First Name", "Last Name", "Email", "Phone", "Company", "AUM", "Sector"])
             st.dataframe(df)
         else:
             st.warning("No investors found.")
-    
-    st.subheader("Send Bulk Emails")
-    recipient = st.text_input("Recipient Email")
-    subject = st.text_input("Email Subject")
-    body = st.text_area("Email Body")
-    if st.button("Send Email"):
-        response = send_email(EmailRequest(subject=subject, body=body, recipient=recipient))
-        st.success(response["message"])
+
+    # Upload CSV File
+    st.subheader("Upload Investor Data")
+    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        st.write("Preview of Uploaded Data:")
+        st.dataframe(df)
+
+        # Check if required columns exist
+        required_columns = ["First Name", "Last Name", "Email", "Phone", "Company", "AUM", "Sector"]
+        if all(col in df.columns for col in required_columns):
+            investors = df[required_columns].values.tolist()
+            database.add_multiple_investors(investors)
+            st.success(f"Successfully added {len(investors)} investors to the database!")
+        else:
+            st.error("CSV file must contain columns: First Name, Last Name, Email, Phone, Company, AUM, Sector")
+
+    # Display All Investors
+    st.subheader("All Investors")
+    all_investors = database.get_all_investors()
+    if all_investors:
+        df_all = pd.DataFrame(all_investors, columns=["ID", "First Name", "Last Name", "Email", "Phone", "Company", "AUM", "Sector"])
+        st.dataframe(df_all)
+    else:
+        st.warning("No investors in the database.")
