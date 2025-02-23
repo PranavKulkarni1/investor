@@ -1,6 +1,7 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
+from database import add_investor, search_investors, get_all_investors
+import sqlite3
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import smtplib
@@ -69,8 +70,12 @@ if "authenticated" in st.session_state:
     st.subheader("Search Investors")
     search_query = st.text_input("Search by Name, Company, or Sector")
     if st.button("Search"):
-        df = pd.read_sql_query(f"SELECT * FROM investors WHERE first_name LIKE '%{search_query}%' OR company LIKE '%{search_query}%'", conn)
-        st.dataframe(df)
+        results = search_investors(search_query)
+        if results:
+            df = pd.DataFrame(results, columns=["ID", "First Name", "Last Name", "Email", "Phone", "Company", "AUM", "Sector"])
+            st.dataframe(df)
+        else:
+            st.warning("No investors found.")
     
     st.subheader("Send Bulk Emails")
     recipient = st.text_input("Recipient Email")
